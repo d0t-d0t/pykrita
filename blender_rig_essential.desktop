@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=blender_rig_essential
+X-Python-2-Compatible=false
+Name= Blender rig essential docker
+Comment= series of tools to improve blender rig drawing
