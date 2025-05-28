@@ -1,6 +1,7 @@
 from krita import *
 from PyQt5.QtCore import QTimer, QEventLoop
 import krita as K
+import numpy as np
 # from .OT_debug_tools import draw_info
 
 k = Krita.instance()
@@ -66,7 +67,7 @@ def get_node_pixel_data(node,document=None):
     Heightbit_size = width * height
     byte_per_px = len(pixel_data)/Heightbit_size
 
-    return pixel_data, byte_per_px
+    return pixel_data, int(byte_per_px)
 
 def byte_replace(source_bytes,target_bytes,byte_mask):
     '''
@@ -98,7 +99,82 @@ def byte_replace(source_bytes,target_bytes,byte_mask):
 
 
     pass
+
+
 def set_node_pixel_data(node,
+                        d=None,
+                        byte_mask=[0,0,0,0],
+                        value_cible = ZERO_BYTE,
+                        value_cible_bpx=1,
+
+                        byte_function = byte_replace):
+    """ Set pixel data by iterating over the pixel data and setting the value
+    byte_mask is a channel boolean mask,
+    value_cible can be a constant byte or a pixel_data
+    """
+    if d is None:
+        d = k.activeDocument()
+    height = d.height()
+    width = d.width()
+    target_pixel_data, b_per_px = get_node_pixel_data(node)
+
+    # Convert target_pixel_data to a numpy array for faster manipulation
+    target_pixel_data_np = np.frombuffer(target_pixel_data, dtype=np.uint8).reshape(height, width, int(b_per_px))
+    # target_pixel_data_np = target_pixel_data_np.copy() 
+
+    constant_px_layout = None
+    #if value_cible is a byte (literal)
+    if type(value_cible)== type(ZERO_BYTE):
+         constant_px_layout = np.full((height, width, b_per_px), value_cible, dtype=np.uint8)
+    elif len(value_cible) == b_per_px:
+        constant_px_layout = np.tile(np.array([value_cible] * b_per_px, dtype=np.uint8).reshape(1, 1, -1), (height, width, 1))
+        #value_cible
+    elif len(value_cible) == height * width* value_cible_bpx:
+        constant_px_layout = np.frombuffer(value_cible, dtype=np.uint8).reshape(height, width, value_cible_bpx)
+
+        if value_cible_bpx < b_per_px:
+            constant_px_layout = np.concatenate([constant_px_layout] * 
+                                                (b_per_px // 
+                                                 value_cible_bpx), axis=-1)
+
+    else:
+        raise ValueError(f"""value_cible {type(value_cible)} must be a constant byte, an array of bytes or a pixel_dat with same size as cible
+                         length of value_cible must be {height * width* value_cible_bpx}
+                         but length of value_cible is {len(value_cible)}""",
+                         )
+
+
+
+    # print(type(b_per_px), b_per_px)
+    # for y in range(height):
+    #     for x in range(width):
+    #         index = ((y * width) + x) #* channels_per_pixel
+            
+    #         current_byte = [target_pixel_data[i+index] for i in range(int(b_per_px))]
+            
+    #         if constant_px_layout == 'PICK':
+    #             if value_cible_bpx == b_per_px:
+    #                 target_byte = [value_cible[i+index] for i in range(int(b_per_px))]
+    #             elif value_cible_bpx == 4 and b_per_px == 1:
+    #                 target_byte = [value_cible[int(index*value_cible_bpx+3)]]
+    #             else:
+    #                 raise ValueError(f"Unsupported pixel depth combination: {value_cible_bpx} and {b_per_px}")
+
+    #         else:
+    #             target_byte = constant_px_layout
+
+    #         byte_array = byte_function(current_byte,
+    #                                    target_byte,
+    #                                    byte_mask)
+
+            
+    #         node.setPixelData(byte_array, x, y, 1, 1)
+    for channel in range(b_per_px):
+        target_pixel_data_np[:, :, channel] = np.where(byte_mask[channel], constant_px_layout[:, :, channel], target_pixel_data_np[:, :, channel])
+    # Convert the processed numpy array back to bytes and set pixel data
+    node.setPixelData(target_pixel_data_np.tobytes(), 0, 0, width, height)
+
+def set_node_pixel_data_slow(node,
                         d=None,
                         byte_mask=[0,0,0,0],
                         value_cible = ZERO_BYTE,
@@ -155,6 +231,7 @@ def set_node_pixel_data(node,
 
             
             node.setPixelData(byte_array, x, y, 1, 1)
+
 #ACTIONS
 def select_layer_opaque(node=None,set_document=False):
     """ Mimics the 'select opaque' action by setting document selection to selected layer's alpha transparency. """
@@ -234,7 +311,7 @@ def fill_with_selection(node,selection=None,d=None):
 
     set_node_pixel_data(node,
                         d=d,
-                        byte_mask=[1,0,0,1],
+                        byte_mask=[1],#had 1001 , why?
                         value_cible = selection.pixelData(
                             0,#,bound.x(), 
                             0,#bound.y(), 

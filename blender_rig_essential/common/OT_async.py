@@ -5,7 +5,7 @@ k= Krita.instance()
 current_layer = None
 
 # sem = QSemapahore(1)
-verbose=False
+verbose=True
 timer_offest = 0
 
 global_sleep_time=0
@@ -34,17 +34,21 @@ def get_timer(func,time=150):
     timer.singleShot(time,func )
     return timer
 
-def wait_for_completion(condition_func):
+def wait_for_completion(condition_func,wrapped_func):
+    draw_info('wait for completion')
     loop = QEventLoop()
     timer_timeout = QTimer()
 
     def check_condition():
         if condition_func():
+            draw_info('get out of loop')
+            wrapped_func()
             loop.quit()  # Exit the event loop when the condition is met
 
     timer_timeout.timeout.connect(check_condition)
     timer_timeout.start(100)  # Check every 100 milliseconds
-    loop.exec_()  # Enter the Qt event loop to wait for the condition
+    loop.exec_()
+      # Enter the Qt event loop to wait for the condition
 
 # def wait_for_completion(condition_func):
 #     loop = QEventLoop()
@@ -96,9 +100,6 @@ def perform_krita_operation(operation_func, *args,
             current_layer = d.activeNode()
             condition_func = has_active_node_changed
         
-
-
-
     def wrapped_operation():
         result = operation_func(*args, **kwargs)
         if callback:
@@ -106,23 +107,25 @@ def perform_krita_operation(operation_func, *args,
         return result
 
     timer = QTimer()
+    # QTimer.singleShot(lambda: wait_for_completion(condition_func,wrapped_operation))
     timer.setSingleShot(True)
-    timer.timeout.connect(lambda: wait_for_completion(condition_func))
+    timer.timeout.connect( operation_func)
     timer.start(0)  # Start the timer to execute the operation
     
     
-    perform_timer = QTimer()
-    perform_timer.setSingleShot(True)
-    if verbose:draw_info('Performing operation...')
+    # perform_timer = QTimer()
+    # perform_timer.setSingleShot(True)
+    # if verbose:draw_info('Performing operation...')
 
-    perform_timer.timeout.connect(wrapped_operation)
-    # global timer_offest
-    # timing +=timer_offest
-    # timer_offest=timing
-    perform_timer.start(timing)
+    # perform_timer.timeout.connect(wrapped_operation)
+    # # global timer_offest
+    # # timing +=timer_offest
+    # # timer_offest=timing
+    # perform_timer.start(timing)
     # sem.release(1)
-    return wrapped_operation() 
-
+    # perform_timer.start(timing)
+    # sem.release(1)
+    
 
 '''
 # Example usage within your Krita script
