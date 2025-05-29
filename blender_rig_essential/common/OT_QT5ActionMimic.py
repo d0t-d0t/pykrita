@@ -1,5 +1,8 @@
 from krita import *
 from PyQt5.QtCore import QTimer, QEventLoop
+# from PyQt5.QtGui import (
+#         QColor,
+# )
 import krita as K
 import numpy as np
 # from .OT_debug_tools import draw_info
@@ -25,20 +28,7 @@ def get_selection_from_pixel_data(pixel_data,height,width,byte_per_px):
                         value_cible_bpx=byte_per_px,
 
                         byte_function = byte_replace)
-    # count=0
-    # for y in range(height):
-    #     for x in range(width):
-    #         index = ((y * width) + x) #* channels_per_pixel
-    #         if byte_per_px == 1:
-    #             alpha_value = pixel_data[index]
-    #         elif byte_per_px == 4:
-    #             alpha_value = pixel_data[index*4+3]
-    #         elif byte_per_px == 8:
-    #             alpha_value = pixel_data[index*8+7]
-            
 
-
-    #         selection.setPixelData(alpha_value, x, y, 1, 1)
 
         
     return selection
@@ -112,6 +102,7 @@ def set_node_pixel_data(node,
     byte_mask is a channel boolean mask,
     value_cible can be a constant byte or a pixel_data
     """
+    print('set node pixel data')
     if d is None:
         d = k.activeDocument()
     height = d.height()
@@ -125,17 +116,30 @@ def set_node_pixel_data(node,
     constant_px_layout = None
     #if value_cible is a byte (literal)
     if type(value_cible)== type(ZERO_BYTE):
+         print('value cible is a byte')
          constant_px_layout = np.full((height, width, b_per_px), value_cible, dtype=np.uint8)
     elif len(value_cible) == b_per_px:
+        print('value cible is a byte array')
         constant_px_layout = np.tile(np.array([value_cible] * b_per_px, dtype=np.uint8).reshape(1, 1, -1), (height, width, 1))
         #value_cible
     elif len(value_cible) == height * width* value_cible_bpx:
+        print(f'value cible is a pixel_data of {value_cible_bpx} channel')
         constant_px_layout = np.frombuffer(value_cible, dtype=np.uint8).reshape(height, width, value_cible_bpx)
 
         if value_cible_bpx < b_per_px:
+            print(f'value cible channel length is less than b_per_px channel length {b_per_px}')
             constant_px_layout = np.concatenate([constant_px_layout] * 
                                                 (b_per_px // 
                                                  value_cible_bpx), axis=-1)
+        elif value_cible_bpx > b_per_px:
+            print(f'value cible channel length is greater than b_per_px channel length {b_per_px}')
+            # keep only the N last channel
+            constant_px_layout = constant_px_layout[:, :, -b_per_px:]
+            print(f'shape of constant_px_layout is {constant_px_layout.shape}')
+
+
+
+
 
     else:
         raise ValueError(f"""value_cible {type(value_cible)} must be a constant byte, an array of bytes or a pixel_dat with same size as cible
@@ -170,7 +174,9 @@ def set_node_pixel_data(node,
             
     #         node.setPixelData(byte_array, x, y, 1, 1)
     for channel in range(b_per_px):
-        target_pixel_data_np[:, :, channel] = np.where(byte_mask[channel], constant_px_layout[:, :, channel], target_pixel_data_np[:, :, channel])
+        if byte_mask[channel]:
+            target_pixel_data_np[:, :, channel] = constant_px_layout[:, :, channel]
+        # target_pixel_data_np[:, :, channel] = np.where(byte_mask[channel], constant_px_layout[:, :, channel], target_pixel_data_np[:, :, channel])
     # Convert the processed numpy array back to bytes and set pixel data
     node.setPixelData(target_pixel_data_np.tobytes(), 0, 0, width, height)
 
@@ -323,11 +329,44 @@ def fill_with_selection(node,selection=None,d=None):
                         byte_function = byte_replace)
 
 
+def get_vector_layer_colors(node,d=None):
+    if not d:
+        d = k.activeDocument()
 
-    
+
+    height = d.height()
+    width = d.width()
+
+    target_pixel_data, b_per_px = get_node_pixel_data(node)
+
+    # Convert target_pixel_data to a numpy array for faster manipulation
+    target_pixel_data_np = np.frombuffer(target_pixel_data, dtype=np.uint8).reshape(height, width, int(b_per_px))
+
+    # get the colors that are present in the target_pixel_data_np array. 
+    # its a list of lists of len b_per_px for each different colors in the target_pixel_data_np array. 
+    # Filter out pixels where alpha is not 255
+    opaque_pixels = target_pixel_data_np[target_pixel_data_np[:, :, -1] == 255]
+
+    # Find unique colors from the filtered opaque pixels
+    unique_colors_opaque = np.unique(opaque_pixels.reshape(-1, target_pixel_data_np.shape[-1]), axis=0)
+
+    return list(unique_colors_opaque.tolist())
+
+
+def set_fill_layer_color(node, color):
+    """Set the fill layer color of a node"""
+    infoFill = InfoObject()
+    infoFill.setProperty('color',color)
+    node.setGenerator ( 'color', infoFill )
+
+
+
 
 
 if __name__ == "__main__":
     d=k.activeDocument()
-    active = d.activeNode()    
-    fill_with_selection(active)
+    active = d.activeNode()   
+    color = QColor(255,0,0,255)
+    set_fill_layer_color(active,color)
+
+    # fill_with_selection(active)
